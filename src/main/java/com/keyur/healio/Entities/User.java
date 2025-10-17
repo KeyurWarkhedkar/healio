@@ -28,14 +28,15 @@ public class User {
 
     @NotBlank
     @Email
+    @Column(unique = true)
     private String email;
 
     @Enumerated(EnumType.STRING)
-    @NotNull
     private UserRoles role;
 
     @NotBlank
-    private String passwordHash;
+    @Column(unique = true)
+    private String password;
 
     @CreationTimestamp
     private LocalDateTime createdAt;
