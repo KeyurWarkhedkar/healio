@@ -1,9 +1,7 @@
 package com.keyur.healio.Services;
 
 import com.keyur.healio.CustomExceptions.DuplicateEmailException;
-import com.keyur.healio.CustomExceptions.UserNotFoundException;
 import com.keyur.healio.DTOs.CounsellorDto;
-import com.keyur.healio.DTOs.StudentDto;
 import com.keyur.healio.Entities.User;
 import com.keyur.healio.Enums.UserRoles;
 import com.keyur.healio.Repositories.UserRepository;
