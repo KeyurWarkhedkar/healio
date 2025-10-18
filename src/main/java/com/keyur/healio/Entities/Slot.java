@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Getter
 @Setter
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"counsellor_id", "start_time", "end_time"}))
 public class Slot {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -30,7 +31,7 @@ public class Slot {
     private User counsellor;
 
     @ManyToOne
-    @JoinColumn(name = "student_id", nullable = false)
+    @JoinColumn(name = "student_id")
     private User student;
 
     private boolean isBooked = false;

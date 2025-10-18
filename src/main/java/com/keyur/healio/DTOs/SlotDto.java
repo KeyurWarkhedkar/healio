@@ -11,8 +11,7 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class AppointmentDto {
-    private int studentId;
-    private int counsellorId;
-    private LocalDateTime appointmentTime;
+public class SlotDto {
+    private LocalDateTime startTime;
+    private LocalDateTime endTime;
 }
