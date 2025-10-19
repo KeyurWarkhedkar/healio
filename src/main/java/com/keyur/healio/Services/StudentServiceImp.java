@@ -1,6 +1,7 @@
 package com.keyur.healio.Services;
 
 import com.keyur.healio.CustomExceptions.DuplicateEmailException;
+import com.keyur.healio.CustomExceptions.InvalidOperationException;
 import com.keyur.healio.CustomExceptions.ResourceNotFoundException;
 import com.keyur.healio.CustomExceptions.SlotAlreadyBookedException;
 import com.keyur.healio.DTOs.StudentDto;
@@ -25,6 +26,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -92,6 +95,13 @@ public class StudentServiceImp implements StudentService {
         }
     }
 
+    //method for getting the user from Security Context
+    public User getCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String email = authentication.getName();
+        return userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("No counsellor found with the given email!"));
+    }
+
     //method to book counselling appointment for student
     @Override
     @Transactional
@@ -104,10 +114,13 @@ public class StudentServiceImp implements StudentService {
             throw new SlotAlreadyBookedException("The slot you chose is already booked. Try again with a different slot");
         }
 
+        //check if the user is trying to book a slot in the past
+        if(slot.getStartTime().isBefore(LocalDateTime.now())) {
+            throw new InvalidOperationException("Cannot book a slot in the past");
+        }
+
         //fetch the current user from security context
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String studentEmail = authentication.getName();
-        User student = userRepository.findByEmail(studentEmail).orElseThrow(() -> new ResourceNotFoundException("No student found with the give email id!"));
+        User student = getCurrentUser();
 
         //if all these checks pass, go ahead with creating an appointment
         Appointment newAppointment = new Appointment();
@@ -123,5 +136,56 @@ public class StudentServiceImp implements StudentService {
         slotRepository.save(slot);
 
         return newAppointment;
+    }
+
+    //method to cancel an appointment
+    @Override
+    @Transactional
+    public Appointment cancelAppointment(int appointmentId) {
+        //fetch the current user from Security Context
+        User student = getCurrentUser();
+
+        //check if the appointment exists in the db or not
+        Appointment appointmentToBeCancelled = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("No appointment found"));
+
+        //check if the appointment belongs to the student trying to cancel it
+        if(!(appointmentToBeCancelled.getStudent().getId() == student.getId())) {
+            throw new InvalidOperationException("You cannot cancel appointment of some other student");
+        }
+
+        //check if the appointment to be cancelled is valid or not
+        if(appointmentToBeCancelled.getAppointmentTime().isBefore(LocalDateTime.now())
+                || appointmentToBeCancelled.getAppointmentStatus().equals(AppointmentStatus.COMPLETED)) {
+            throw new InvalidOperationException("Cannot cancel a past appointment");
+        }
+
+        //check if the appointment is already cancelled
+        if(appointmentToBeCancelled.getAppointmentStatus().equals(AppointmentStatus.CANCELLED)) {
+            throw new InvalidOperationException("The appointment is already cancelled");
+        }
+
+        //make the slot of the appointment available for further bookings
+        Slot slot = slotRepository.findByCounsellorAndStudentAndStartTime(appointmentToBeCancelled.getCounsellor(),
+                appointmentToBeCancelled.getStudent(), appointmentToBeCancelled.getAppointmentTime())
+                .orElseThrow(() -> new ResourceNotFoundException("No slot found for the current appointment"));
+
+        slot.setStudent(null);
+        slot.setBooked(false);
+        slotRepository.save(slot);
+
+        //if all the checks pass, then go ahead with cancelling the appointment
+        appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED);
+        return appointmentRepository.save(appointmentToBeCancelled);
+    }
+
+    //method to get all appointments of a user
+    @Override
+    public List<Appointment> getAllAppointments() {
+        //fetch the current student from Security Context
+        User student = getCurrentUser();
+
+        //fetch the appointments of the student from db
+        return appointmentRepository.findAllByStudentOrderByStartTimeAsc(student);
     }
 }
