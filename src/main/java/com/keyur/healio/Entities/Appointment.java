@@ -37,4 +37,11 @@ public class Appointment {
 
     @CreationTimestamp
     private LocalDateTime createdAt;
+
+    @NotNull
+    @OneToOne
+    private Slot slot;
+
+    @Version
+    private int version;
 }

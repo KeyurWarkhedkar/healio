@@ -1,6 +1,7 @@
 package com.keyur.healio.Services;
 
 import com.keyur.healio.CustomExceptions.DuplicateEmailException;
+import com.keyur.healio.CustomExceptions.InvalidOperationException;
 import com.keyur.healio.CustomExceptions.ResourceNotFoundException;
 import com.keyur.healio.CustomExceptions.SlotOverlapException;
 import com.keyur.healio.DTOs.CounsellorDto;
@@ -8,6 +9,7 @@ import com.keyur.healio.DTOs.SlotDto;
 import com.keyur.healio.Entities.Appointment;
 import com.keyur.healio.Entities.Slot;
 import com.keyur.healio.Entities.User;
+import com.keyur.healio.Enums.AppointmentStatus;
 import com.keyur.healio.Enums.UserRoles;
 import com.keyur.healio.Repositories.AppointmentRepository;
 import com.keyur.healio.Repositories.SlotRepository;
@@ -155,5 +157,78 @@ public class CounsellorServiceImp implements CounsellorService {
 
         //fetch all the appointments of this counsellor from appointments table
         return appointmentRepository.findAllByCounsellorOrderByStartTimeAsc(counsellor);
+    }
+
+    //method to cancel slot
+    @Override
+    @Transactional
+    public Slot removeSlot(int slotId) {
+        //get the current user from the Security Context
+        User counsellor = getCurrentUser();
+
+        //fetch the slot from the db
+        Slot slotToBeCancelled = slotRepository.findByIdWithLock(slotId).orElseThrow(() -> new ResourceNotFoundException("No slot exists"));
+
+        if(slotToBeCancelled.isCancelled()) {
+            throw new InvalidOperationException("Slot already cancelled");
+        }
+
+        //check if the slot to be cancelled is before the current time or not
+        if(slotToBeCancelled.getStartTime().isBefore(LocalDateTime.now())) {
+            throw new InvalidOperationException("You cannot cancel a slot from the past");
+        }
+
+        //check if the slot to be cancelled has any appointment scheduled
+        if(slotToBeCancelled.isBooked()) {
+            Appointment appointmentToBeCancelled = appointmentRepository.findBySlot(slotToBeCancelled);
+            appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED);
+            appointmentRepository.save(appointmentToBeCancelled);
+        }
+
+        //cancel the slot
+        slotToBeCancelled.setCancelled(true);
+        return slotRepository.save(slotToBeCancelled);
+    }
+
+    //method to cancel appointment from counsellor's side
+    @Override
+    @Transactional
+    public Appointment cancelAppointment(int appointmentId) {
+        User counsellor = getCurrentUser();
+
+        Appointment appointmentToBeCancelled = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("No appointment found"));
+
+        // Check counsellor ownership
+        if(appointmentToBeCancelled.getCounsellor().getId() != counsellor.getId()) {
+            throw new InvalidOperationException("You cannot cancel an appointment for another counsellor");
+        }
+
+        // Lock the slot (important for concurrency safety)
+        Slot slot = slotRepository.findByCounsellorAndStudentAndStartTimeWithLock(
+                        appointmentToBeCancelled.getCounsellor(),
+                        appointmentToBeCancelled.getStudent(),
+                        appointmentToBeCancelled.getAppointmentTime())
+                .orElseThrow(() -> new ResourceNotFoundException("No slot found for the current appointment"));
+
+        // Free slot
+        slot.setStudent(null);
+        slot.setBooked(false);
+        slotRepository.save(slot);
+
+        // Check if appointment is valid
+        if(appointmentToBeCancelled.getAppointmentTime().isBefore(LocalDateTime.now())
+                || appointmentToBeCancelled.getAppointmentStatus() == AppointmentStatus.COMPLETED) {
+            throw new InvalidOperationException("Cannot cancel a past appointment");
+        }
+
+        // Check if already cancelled
+        if(appointmentToBeCancelled.getAppointmentStatus() == AppointmentStatus.CANCELLED) {
+            return appointmentToBeCancelled; // idempotent: just return
+        }
+
+        // Cancel appointment
+        appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED);
+        return appointmentRepository.save(appointmentToBeCancelled);
     }
 }

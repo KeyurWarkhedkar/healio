@@ -20,5 +20,6 @@ public interface SlotRepository extends JpaRepository<Slot, Integer> {
 
     public List<Slot> findByCounsellorAndStartTimeAfter(User counsellor, LocalDateTime currentTime);
 
-    public Optional<Slot> findByCounsellorAndStudentAndStartTime(User counsellor, User student, LocalDateTime startTime);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    public Optional<Slot> findByCounsellorAndStudentAndStartTimeWithLock(User counsellor, User student, LocalDateTime startTime);
 }

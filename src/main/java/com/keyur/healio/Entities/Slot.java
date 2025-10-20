@@ -35,4 +35,6 @@ public class Slot {
     private User student;
 
     private boolean isBooked = false;
+
+    private boolean isCancelled = false;
 }

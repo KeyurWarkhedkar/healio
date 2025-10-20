@@ -13,4 +13,6 @@ public interface CounsellorService {
     public String loginCounsellor(CounsellorDto counsellorDto);
     public Slot publishSlots(SlotDto slotDto);
     public List<Appointment> getAllAppointments();
+    public Slot removeSlot(int slotId);
+    public Appointment cancelAppointment(int appointmentId);
 }

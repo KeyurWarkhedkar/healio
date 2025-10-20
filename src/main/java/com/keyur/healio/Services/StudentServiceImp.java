@@ -109,6 +109,11 @@ public class StudentServiceImp implements StudentService {
         //get the slot from db with a lock to avoid race conditions in a concurrent environment
         Slot slot = slotRepository.findByIdWithLock(slotId).orElseThrow(() -> new ResourceNotFoundException("The slot you are trying to book is invalid!"));
 
+        //check if the slot is cancelled by the counsellor
+        if(slot.isCancelled()) {
+            throw new InvalidOperationException("The slot you are trying to book is cancelled by the counsellor");
+        }
+
         //check if the slot is already booked by another student
         if(slot.isBooked()) {
             throw new SlotAlreadyBookedException("The slot you chose is already booked. Try again with a different slot");
@@ -128,6 +133,7 @@ public class StudentServiceImp implements StudentService {
         newAppointment.setCounsellor(slot.getCounsellor());
         newAppointment.setAppointmentTime(slot.getStartTime());
         newAppointment.setAppointmentStatus(AppointmentStatus.CONFIRMED);
+        newAppointment.setSlot(slot);
         appointmentRepository.save(newAppointment);
 
         //update the slot to 'BOOKED'
@@ -149,6 +155,15 @@ public class StudentServiceImp implements StudentService {
         Appointment appointmentToBeCancelled = appointmentRepository.findById(appointmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("No appointment found"));
 
+        //make the slot of the appointment available for further bookings
+        Slot slot = slotRepository.findByCounsellorAndStudentAndStartTimeWithLock(appointmentToBeCancelled.getCounsellor(),
+                appointmentToBeCancelled.getStudent(), appointmentToBeCancelled.getAppointmentTime())
+                .orElseThrow(() -> new ResourceNotFoundException("No slot found for the current appointment"));
+
+        slot.setStudent(null);
+        slot.setBooked(false);
+        slotRepository.save(slot);
+
         //check if the appointment belongs to the student trying to cancel it
         if(!(appointmentToBeCancelled.getStudent().getId() == student.getId())) {
             throw new InvalidOperationException("You cannot cancel appointment of some other student");
@@ -165,14 +180,6 @@ public class StudentServiceImp implements StudentService {
             throw new InvalidOperationException("The appointment is already cancelled");
         }
 
-        //make the slot of the appointment available for further bookings
-        Slot slot = slotRepository.findByCounsellorAndStudentAndStartTime(appointmentToBeCancelled.getCounsellor(),
-                appointmentToBeCancelled.getStudent(), appointmentToBeCancelled.getAppointmentTime())
-                .orElseThrow(() -> new ResourceNotFoundException("No slot found for the current appointment"));
-
-        slot.setStudent(null);
-        slot.setBooked(false);
-        slotRepository.save(slot);
 
         //if all the checks pass, then go ahead with cancelling the appointment
         appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED);
