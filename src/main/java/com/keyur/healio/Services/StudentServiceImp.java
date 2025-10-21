@@ -4,6 +4,7 @@ import com.keyur.healio.CustomExceptions.DuplicateEmailException;
 import com.keyur.healio.CustomExceptions.InvalidOperationException;
 import com.keyur.healio.CustomExceptions.ResourceNotFoundException;
 import com.keyur.healio.CustomExceptions.SlotAlreadyBookedException;
+import com.keyur.healio.DTOs.AppointmentUpdateDto;
 import com.keyur.healio.DTOs.StudentDto;
 import com.keyur.healio.Entities.Appointment;
 import com.keyur.healio.Entities.Slot;
@@ -194,5 +195,29 @@ public class StudentServiceImp implements StudentService {
 
         //fetch the appointments of the student from db
         return appointmentRepository.findAllByStudentOrderByStartTimeAsc(student);
+    }
+
+    //method to update the appointment from student's side
+    @Override
+    @Transactional
+    public Appointment updateAppointment(AppointmentUpdateDto appointmentUpdateDto, int appointmentId) {
+        //get the current user from Security Context
+        User student = getCurrentUser();
+
+        //fetch the appointment to be updated from the db
+        Appointment appointmentToBeUpdated = appointmentRepository.findById(appointmentId).orElseThrow(() -> new ResourceNotFoundException("No appointment with the given id found"));
+
+        //check if the counsellor is trying to modify his own appointment or not
+        if(appointmentToBeUpdated.getStudent().getId() != student.getId()) {
+            throw new InvalidOperationException("You cannot update other student's appointment");
+        }
+
+        //if all the checks pass, proceed with the update
+        if(appointmentUpdateDto.getAppointmentTime() != null) {
+            appointmentToBeUpdated.setAppointmentTime(appointmentUpdateDto.getAppointmentTime());
+        }
+
+        //this save can cause an optimistic lock exception due to concurrent modifications. handled in GlobalExceptionHandler.
+        return appointmentRepository.save(appointmentToBeUpdated);
     }
 }

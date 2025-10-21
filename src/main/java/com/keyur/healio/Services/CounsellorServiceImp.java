@@ -4,6 +4,7 @@ import com.keyur.healio.CustomExceptions.DuplicateEmailException;
 import com.keyur.healio.CustomExceptions.InvalidOperationException;
 import com.keyur.healio.CustomExceptions.ResourceNotFoundException;
 import com.keyur.healio.CustomExceptions.SlotOverlapException;
+import com.keyur.healio.DTOs.AppointmentUpdateDto;
 import com.keyur.healio.DTOs.CounsellorDto;
 import com.keyur.healio.DTOs.SlotDto;
 import com.keyur.healio.Entities.Appointment;
@@ -199,36 +200,63 @@ public class CounsellorServiceImp implements CounsellorService {
         Appointment appointmentToBeCancelled = appointmentRepository.findById(appointmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("No appointment found"));
 
-        // Check counsellor ownership
+        //check counsellor ownership
         if(appointmentToBeCancelled.getCounsellor().getId() != counsellor.getId()) {
             throw new InvalidOperationException("You cannot cancel an appointment for another counsellor");
         }
 
-        // Lock the slot (important for concurrency safety)
+        //lock the slot
         Slot slot = slotRepository.findByCounsellorAndStudentAndStartTimeWithLock(
                         appointmentToBeCancelled.getCounsellor(),
                         appointmentToBeCancelled.getStudent(),
                         appointmentToBeCancelled.getAppointmentTime())
                 .orElseThrow(() -> new ResourceNotFoundException("No slot found for the current appointment"));
 
-        // Free slot
+        //free slot
         slot.setStudent(null);
         slot.setBooked(false);
         slotRepository.save(slot);
 
-        // Check if appointment is valid
+        //check if appointment is valid
         if(appointmentToBeCancelled.getAppointmentTime().isBefore(LocalDateTime.now())
                 || appointmentToBeCancelled.getAppointmentStatus() == AppointmentStatus.COMPLETED) {
             throw new InvalidOperationException("Cannot cancel a past appointment");
         }
 
-        // Check if already cancelled
+        //check if already cancelled
         if(appointmentToBeCancelled.getAppointmentStatus() == AppointmentStatus.CANCELLED) {
             return appointmentToBeCancelled; // idempotent: just return
         }
 
-        // Cancel appointment
+        //cancel appointment
         appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED);
         return appointmentRepository.save(appointmentToBeCancelled);
+    }
+
+    //method to update the appointment from counsellor's side
+    @Override
+    @Transactional
+    public Appointment updateAppointment(AppointmentUpdateDto appointmentUpdateDto, int appointmentId) {
+        //get the current user from Security Context
+        User counsellor = getCurrentUser();
+
+        //fetch the appointment to be updated from the db
+        Appointment appointmentToBeUpdated = appointmentRepository.findById(appointmentId).orElseThrow(() -> new ResourceNotFoundException("No appointment with the given id found"));
+
+        //check if the counsellor is trying to modify his own appointment or not
+        if(appointmentToBeUpdated.getCounsellor().getId() != counsellor.getId()) {
+            throw new InvalidOperationException("You cannot update other counsellor's appointment");
+        }
+
+        //if all the checks pass, proceed with the update
+        if(appointmentUpdateDto.getAppointmentTime() != null) {
+            appointmentToBeUpdated.setAppointmentTime(appointmentUpdateDto.getAppointmentTime());
+        }
+        if(appointmentUpdateDto.getAppointmentStatus() != null) {
+            appointmentToBeUpdated.setAppointmentStatus(appointmentUpdateDto.getAppointmentStatus());
+        }
+
+        //this save can cause an optimistic lock exception due to concurrent modifications. handled in GlobalExceptionHandler.
+        return appointmentRepository.save(appointmentToBeUpdated);
     }
 }
