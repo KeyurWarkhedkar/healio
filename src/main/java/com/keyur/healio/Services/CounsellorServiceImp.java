@@ -157,7 +157,7 @@ public class CounsellorServiceImp implements CounsellorService {
         User counsellor = getCurrentUser();
 
         //fetch all the appointments of this counsellor from appointments table
-        return appointmentRepository.findAllByCounsellorOrderByStartTimeAsc(counsellor);
+        return appointmentRepository.findAllByCounsellorOrderByAppointmentTimeAsc(counsellor);
     }
 
     //method to cancel slot

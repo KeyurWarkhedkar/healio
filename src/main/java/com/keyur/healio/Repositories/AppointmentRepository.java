@@ -10,7 +10,7 @@ import java.util.List;
 
 @Repository
 public interface AppointmentRepository extends JpaRepository<Appointment, Integer> {
-    public List<Appointment> findAllByCounsellorOrderByStartTimeAsc(User counsellor);
-    public List<Appointment> findAllByStudentOrderByStartTimeAsc(User student);
+    public List<Appointment> findAllByCounsellorOrderByAppointmentTimeAsc(User counsellor);
+    public List<Appointment> findAllByStudentOrderByAppointmentTimeAsc(User student);
     public Appointment findBySlot(Slot slot);
 }

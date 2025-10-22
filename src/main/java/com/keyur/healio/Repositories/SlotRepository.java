@@ -21,5 +21,6 @@ public interface SlotRepository extends JpaRepository<Slot, Integer> {
     public List<Slot> findByCounsellorAndStartTimeAfter(User counsellor, LocalDateTime currentTime);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from Slot s where s.counsellor = ?1 and s.student = ?2 and s.startTime = ?3")
     public Optional<Slot> findByCounsellorAndStudentAndStartTimeWithLock(User counsellor, User student, LocalDateTime startTime);
 }

@@ -194,7 +194,7 @@ public class StudentServiceImp implements StudentService {
         User student = getCurrentUser();
 
         //fetch the appointments of the student from db
-        return appointmentRepository.findAllByStudentOrderByStartTimeAsc(student);
+        return appointmentRepository.findAllByStudentOrderByAppointmentTimeAsc(student);
     }
 
     //method to update the appointment from student's side

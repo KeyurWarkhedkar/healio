@@ -1,6 +1,8 @@
 package com.keyur.healio.Controllers;
 
 import com.keyur.healio.DTOs.CounsellorDto;
+import com.keyur.healio.DTOs.SlotDto;
+import com.keyur.healio.Entities.Slot;
 import com.keyur.healio.Entities.User;
 import com.keyur.healio.Services.CounsellorService;
 import jakarta.validation.Valid;
