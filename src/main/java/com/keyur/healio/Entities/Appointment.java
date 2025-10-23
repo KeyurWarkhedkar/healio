@@ -39,7 +39,8 @@ public class Appointment {
     private LocalDateTime createdAt;
 
     @NotNull
-    @OneToOne
+    @ManyToOne
+    @JoinColumn(name = "slot_id")
     private Slot slot;
 
     @Version

@@ -4,6 +4,7 @@ import com.keyur.healio.CustomExceptions.DuplicateEmailException;
 import com.keyur.healio.CustomExceptions.InvalidOperationException;
 import com.keyur.healio.CustomExceptions.ResourceNotFoundException;
 import com.keyur.healio.CustomExceptions.SlotAlreadyBookedException;
+import com.keyur.healio.DTOs.AppointmentEventDto;
 import com.keyur.healio.DTOs.AppointmentUpdateDto;
 import com.keyur.healio.DTOs.StudentDto;
 import com.keyur.healio.Entities.Appointment;
@@ -41,10 +42,11 @@ public class StudentServiceImp implements StudentService {
     CustomUserDetailsService customUserDetailsService;
     SlotRepository slotRepository;
     private final AppointmentRepository appointmentRepository;
+    AppointmentEventPublisher publisher;
 
     //injecting using dependency injection
     public StudentServiceImp(UserRepository userRepository, BCryptPasswordEncoder bCryptPasswordEncoder, AuthenticationManager authenticationManager, JwtService jwtService, CustomUserDetailsService customUserDetailsService, SlotRepository slotRepository,
-                             AppointmentRepository appointmentRepository) {
+                             AppointmentRepository appointmentRepository, AppointmentEventPublisher publisher) {
         this.userRepository = userRepository;
         this.bCryptPasswordEncoder = bCryptPasswordEncoder;
         this.authenticationManager = authenticationManager;
@@ -52,6 +54,7 @@ public class StudentServiceImp implements StudentService {
         this.customUserDetailsService = customUserDetailsService;
         this.slotRepository = slotRepository;
         this.appointmentRepository = appointmentRepository;
+        this.publisher = publisher;
     }
 
     //method to add a new user to the database
@@ -142,6 +145,17 @@ public class StudentServiceImp implements StudentService {
         slot.setStudent(student);
         slotRepository.save(slot);
 
+        //publish the appointment booked event to the notification queue for sending the
+        //email notification to the counsellor
+        AppointmentEventDto event = new AppointmentEventDto();
+        event.setAppointmentId(newAppointment.getId());
+        event.setAppointmentTime(newAppointment.getAppointmentTime());
+        event.setAppointmentStatus(AppointmentStatus.CONFIRMED.toString());
+        event.setCounsellorEmail(newAppointment.getCounsellor().getEmail());
+        event.setStudentEmail(newAppointment.getStudent().getEmail());
+
+        publisher.publishBooked(event);
+
         return newAppointment;
     }
 
@@ -184,6 +198,7 @@ public class StudentServiceImp implements StudentService {
 
         //if all the checks pass, then go ahead with cancelling the appointment
         appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED);
+        appointmentToBeCancelled.setSlot(null);
         return appointmentRepository.save(appointmentToBeCancelled);
     }
 
