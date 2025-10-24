@@ -4,6 +4,7 @@ import com.keyur.healio.CustomExceptions.DuplicateEmailException;
 import com.keyur.healio.CustomExceptions.InvalidOperationException;
 import com.keyur.healio.CustomExceptions.ResourceNotFoundException;
 import com.keyur.healio.CustomExceptions.SlotOverlapException;
+import com.keyur.healio.DTOs.AppointmentEventDto;
 import com.keyur.healio.DTOs.AppointmentUpdateDto;
 import com.keyur.healio.DTOs.CounsellorDto;
 import com.keyur.healio.DTOs.SlotDto;
@@ -42,11 +43,13 @@ public class CounsellorServiceImp implements CounsellorService {
     CustomUserDetailsService customUserDetailsService;
     private final SlotRepository slotRepository;
     private final AppointmentRepository appointmentRepository;
+    AppointmentEventPublisher publisher;
 
     //injecting using dependency injection
     public CounsellorServiceImp(UserRepository userRepository, BCryptPasswordEncoder bCryptPasswordEncoder, AuthenticationManager authenticationManager, JwtService jwtService, CustomUserDetailsService customUserDetailsService,
                                 SlotRepository slotRepository,
-                                AppointmentRepository appointmentRepository) {
+                                AppointmentRepository appointmentRepository,
+                                AppointmentEventPublisher publisher) {
         this.userRepository = userRepository;
         this.bCryptPasswordEncoder = bCryptPasswordEncoder;
         this.authenticationManager = authenticationManager;
@@ -54,6 +57,7 @@ public class CounsellorServiceImp implements CounsellorService {
         this.customUserDetailsService = customUserDetailsService;
         this.slotRepository = slotRepository;
         this.appointmentRepository = appointmentRepository;
+        this.publisher = publisher;
     }
 
     //method to add a new user to the database
@@ -179,16 +183,29 @@ public class CounsellorServiceImp implements CounsellorService {
             throw new InvalidOperationException("You cannot cancel a slot from the past");
         }
 
+        //cancel the slot
+        slotToBeCancelled.setCancelled(true);
+        slotRepository.save(slotToBeCancelled);
+
         //check if the slot to be cancelled has any appointment scheduled
         if(slotToBeCancelled.isBooked()) {
             Appointment appointmentToBeCancelled = appointmentRepository.findBySlot(slotToBeCancelled);
-            appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED);
+            appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED_COUNSELLOR);
             appointmentRepository.save(appointmentToBeCancelled);
+
+            //publish the appointment booked event to the notification queue for sending the
+            //email notification to the counsellor
+            AppointmentEventDto event = new AppointmentEventDto();
+            event.setAppointmentId(appointmentToBeCancelled.getId());
+            event.setAppointmentTime(appointmentToBeCancelled.getAppointmentTime());
+            event.setCounsellorEmail(appointmentToBeCancelled.getCounsellor().getEmail());
+            event.setStudentEmail(appointmentToBeCancelled.getStudent().getEmail());
+            event.setEventType(AppointmentStatus.CANCELLED_COUNSELLOR);
+
+            publisher.publishCancelled(event);
         }
 
-        //cancel the slot
-        slotToBeCancelled.setCancelled(true);
-        return slotRepository.save(slotToBeCancelled);
+        return slotToBeCancelled;
     }
 
     //method to cancel appointment from counsellor's side
@@ -205,17 +222,13 @@ public class CounsellorServiceImp implements CounsellorService {
             throw new InvalidOperationException("You cannot cancel an appointment for another counsellor");
         }
 
-        //lock the slot
+        //acquire slot lock first to ensure that concurrent cancellation attempts
+        //are serialized. Validation after locking ensures only the first transaction passes.
         Slot slot = slotRepository.findByCounsellorAndStudentAndStartTimeWithLock(
                         appointmentToBeCancelled.getCounsellor(),
                         appointmentToBeCancelled.getStudent(),
                         appointmentToBeCancelled.getAppointmentTime())
                 .orElseThrow(() -> new ResourceNotFoundException("No slot found for the current appointment"));
-
-        //free slot
-        slot.setStudent(null);
-        slot.setBooked(false);
-        slotRepository.save(slot);
 
         //check if appointment is valid
         if(appointmentToBeCancelled.getAppointmentTime().isBefore(LocalDateTime.now())
@@ -224,16 +237,36 @@ public class CounsellorServiceImp implements CounsellorService {
         }
 
         //check if already cancelled
-        if(appointmentToBeCancelled.getAppointmentStatus() == AppointmentStatus.CANCELLED) {
+        if((appointmentToBeCancelled.getAppointmentStatus() == AppointmentStatus.CANCELLED_STUDENT)
+        || appointmentToBeCancelled.getAppointmentStatus() == AppointmentStatus.CANCELLED_COUNSELLOR) {
             return appointmentToBeCancelled; // idempotent: just return
         }
 
+        //free slot
+        slot.setStudent(null);
+        slot.setBooked(false);
+        slotRepository.save(slot);
+
         //cancel appointment
-        appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED);
-        return appointmentRepository.save(appointmentToBeCancelled);
+        appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED_COUNSELLOR);
+        appointmentRepository.save(appointmentToBeCancelled);
+
+        //publish the appointment booked event to the notification queue for sending the
+        //email notification to the counsellor
+        AppointmentEventDto event = new AppointmentEventDto();
+        event.setAppointmentId(appointmentToBeCancelled.getId());
+        event.setAppointmentTime(appointmentToBeCancelled.getAppointmentTime());
+        event.setCounsellorEmail(appointmentToBeCancelled.getCounsellor().getEmail());
+        event.setStudentEmail(appointmentToBeCancelled.getStudent().getEmail());
+        event.setEventType(AppointmentStatus.CANCELLED_COUNSELLOR);
+
+        publisher.publishCancelled(event);
+
+        return appointmentToBeCancelled;
     }
 
     //method to update the appointment from counsellor's side
+    /*
     @Override
     @Transactional
     public Appointment updateAppointment(AppointmentUpdateDto appointmentUpdateDto, int appointmentId) {
@@ -259,4 +292,5 @@ public class CounsellorServiceImp implements CounsellorService {
         //this save can cause an optimistic lock exception due to concurrent modifications. handled in GlobalExceptionHandler.
         return appointmentRepository.save(appointmentToBeUpdated);
     }
+    */
 }

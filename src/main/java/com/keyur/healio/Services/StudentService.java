@@ -13,5 +13,5 @@ public interface StudentService {
     public Appointment bookAppointment(int slotId);
     public Appointment cancelAppointment(int appointmentId);
     public List<Appointment> getAllAppointments();
-    public Appointment updateAppointment(AppointmentUpdateDto appointmentUpdateDto, int appointmentId);
+    //public Appointment updateAppointment(AppointmentUpdateDto appointmentUpdateDto, int appointmentId);
 }

@@ -150,9 +150,9 @@ public class StudentServiceImp implements StudentService {
         AppointmentEventDto event = new AppointmentEventDto();
         event.setAppointmentId(newAppointment.getId());
         event.setAppointmentTime(newAppointment.getAppointmentTime());
-        event.setAppointmentStatus(AppointmentStatus.CONFIRMED.toString());
         event.setCounsellorEmail(newAppointment.getCounsellor().getEmail());
         event.setStudentEmail(newAppointment.getStudent().getEmail());
+        event.setEventType(AppointmentStatus.CONFIRMED);
 
         publisher.publishBooked(event);
 
@@ -170,14 +170,11 @@ public class StudentServiceImp implements StudentService {
         Appointment appointmentToBeCancelled = appointmentRepository.findById(appointmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("No appointment found"));
 
-        //make the slot of the appointment available for further bookings
+        //acquire slot lock first to ensure that concurrent cancellation attempts
+        //are serialized. Validation after locking ensures only the first transaction passes.
         Slot slot = slotRepository.findByCounsellorAndStudentAndStartTimeWithLock(appointmentToBeCancelled.getCounsellor(),
                 appointmentToBeCancelled.getStudent(), appointmentToBeCancelled.getAppointmentTime())
                 .orElseThrow(() -> new ResourceNotFoundException("No slot found for the current appointment"));
-
-        slot.setStudent(null);
-        slot.setBooked(false);
-        slotRepository.save(slot);
 
         //check if the appointment belongs to the student trying to cancel it
         if(!(appointmentToBeCancelled.getStudent().getId() == student.getId())) {
@@ -191,15 +188,33 @@ public class StudentServiceImp implements StudentService {
         }
 
         //check if the appointment is already cancelled
-        if(appointmentToBeCancelled.getAppointmentStatus().equals(AppointmentStatus.CANCELLED)) {
+        if(appointmentToBeCancelled.getAppointmentStatus().equals(AppointmentStatus.CANCELLED_STUDENT)
+        || appointmentToBeCancelled.getAppointmentStatus().equals(AppointmentStatus.CANCELLED_COUNSELLOR)) {
             throw new InvalidOperationException("The appointment is already cancelled");
         }
 
+        //make the slot of the appointment available for further bookings
+        slot.setStudent(null);
+        slot.setBooked(false);
+        slotRepository.save(slot);
 
         //if all the checks pass, then go ahead with cancelling the appointment
-        appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED);
+        appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED_STUDENT);
         appointmentToBeCancelled.setSlot(null);
-        return appointmentRepository.save(appointmentToBeCancelled);
+        appointmentRepository.save(appointmentToBeCancelled);
+
+        //publish the appointment booked event to the notification queue for sending the
+        //email notification to the counsellor
+        AppointmentEventDto event = new AppointmentEventDto();
+        event.setAppointmentId(appointmentToBeCancelled.getId());
+        event.setAppointmentTime(appointmentToBeCancelled.getAppointmentTime());
+        event.setCounsellorEmail(appointmentToBeCancelled.getCounsellor().getEmail());
+        event.setStudentEmail(appointmentToBeCancelled.getStudent().getEmail());
+        event.setEventType(AppointmentStatus.CANCELLED_STUDENT);
+
+        publisher.publishCancelled(event);
+
+        return appointmentToBeCancelled;
     }
 
     //method to get all appointments of a user
@@ -213,6 +228,7 @@ public class StudentServiceImp implements StudentService {
     }
 
     //method to update the appointment from student's side
+    /*
     @Override
     @Transactional
     public Appointment updateAppointment(AppointmentUpdateDto appointmentUpdateDto, int appointmentId) {
@@ -233,6 +249,20 @@ public class StudentServiceImp implements StudentService {
         }
 
         //this save can cause an optimistic lock exception due to concurrent modifications. handled in GlobalExceptionHandler.
-        return appointmentRepository.save(appointmentToBeUpdated);
+        appointmentRepository.save(appointmentToBeUpdated);
+
+        //publish the appointment booked event to the notification queue for sending the
+        //email notification to the counsellor
+        AppointmentEventDto event = new AppointmentEventDto();
+        event.setAppointmentId(appointmentToBeUpdated.getId());
+        event.setAppointmentTime(appointmentToBeUpdated.getAppointmentTime());
+        event.setCounsellorEmail(appointmentToBeUpdated.getCounsellor().getEmail());
+        event.setStudentEmail(appointmentToBeUpdated.getStudent().getEmail());
+        event.setEventType(AppointmentStatus.CHANGED_STUDENT);
+
+        publisher.publishCancelled(event);
+
+        return appointmentToBeUpdated;
     }
+    */
 }

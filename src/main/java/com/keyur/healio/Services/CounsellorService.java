@@ -16,5 +16,5 @@ public interface CounsellorService {
     public List<Appointment> getAllAppointments();
     public Slot removeSlot(int slotId);
     public Appointment cancelAppointment(int appointmentId);
-    public Appointment updateAppointment(AppointmentUpdateDto appointmentUpdateDto, int appointmentId);
+    //public Appointment updateAppointment(AppointmentUpdateDto appointmentUpdateDto, int appointmentId);
 }
