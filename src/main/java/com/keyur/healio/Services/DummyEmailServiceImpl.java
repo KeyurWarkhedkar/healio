@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 public class DummyEmailServiceImpl implements EmailService {
     @Override
     public void sendEmail(String to, String subject, String body) {
-        // Just log to console
         System.out.println("==== Sending email ====");
         System.out.println("To: " + to);
         System.out.println("Subject: " + subject);

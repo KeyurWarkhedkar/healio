@@ -1,36 +1,38 @@
 package com.keyur.healio.Entities;
 
+import com.keyur.healio.Enums.PaymentStatus;
 import jakarta.persistence.*;
-import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
 @Entity
-@NoArgsConstructor
 @AllArgsConstructor
+@NoArgsConstructor
 @Getter
 @Setter
-public class ForumPost {
+public class Payment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
 
     @ManyToOne
-    @JoinColumn(name = "thread_id")
-    private ForumThread thread;
+    @JoinColumn(name = "appointment_id")
+    private Appointment appointment;
 
-    @ManyToOne
-    @JoinColumn(name = "author_id")
-    private User author;
+    private double amount;
 
-    @NotNull
-    private String content;
+    @Enumerated(EnumType.STRING)
+    private PaymentStatus paymentStatus;
 
-    @CreationTimestamp
+    private String gatewayOrderId;
+
+    private String gatewayPaymentId;
+
+    private String gatewayName;
+
     private LocalDateTime createdAt;
 }

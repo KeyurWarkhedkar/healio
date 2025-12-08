@@ -1,6 +1,7 @@
 package com.keyur.healio.Entities;
 
 import com.keyur.healio.Enums.AppointmentStatus;
+import com.keyur.healio.Enums.PaymentStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -33,6 +34,7 @@ public class Appointment {
     private LocalDateTime appointmentTime;
 
     @NotNull
+    @Enumerated(EnumType.STRING)
     private AppointmentStatus appointmentStatus;
 
     @CreationTimestamp
@@ -42,6 +44,9 @@ public class Appointment {
     @ManyToOne
     @JoinColumn(name = "slot_id")
     private Slot slot;
+
+    @Column
+    private LocalDateTime expiresAt;
 
     @Version
     private int version;

@@ -34,6 +34,9 @@ public class Slot {
     @JoinColumn(name = "student_id")
     private User student;
 
+    @Column(nullable = false)
+    private Integer price;
+
     private boolean isBooked = false;
 
     private boolean isCancelled = false;
