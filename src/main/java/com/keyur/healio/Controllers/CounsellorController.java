@@ -5,6 +5,7 @@ import com.keyur.healio.DTOs.SlotDto;
 import com.keyur.healio.Entities.Appointment;
 import com.keyur.healio.Entities.Slot;
 import com.keyur.healio.Entities.User;
+import com.keyur.healio.Services.AuthService;
 import com.keyur.healio.Services.CounsellorService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -18,22 +19,11 @@ import java.util.List;
 public class CounsellorController {
     //fields
     CounsellorService counsellorService;
+    AuthService authService;
 
     //dependency injection
     public CounsellorController(CounsellorService counsellorService) {
         this.counsellorService = counsellorService;
-    }
-
-    //method to receive request to register user
-    @PostMapping(value = "/register")
-    public ResponseEntity<User> registerCounsellor(@Valid @RequestBody User newCounsellor) {
-        return new ResponseEntity<>(counsellorService.registerCounsellor(newCounsellor), HttpStatus.CREATED);
-    }
-
-    //method to login student
-    @PostMapping(value = "/login")
-    public ResponseEntity<String> loginCounsellor(@Valid @RequestBody CounsellorDto counsellorDto) {
-        return new ResponseEntity<>(counsellorService.loginCounsellor(counsellorDto), HttpStatus.OK);
     }
 
     //method to add slot for counsellor

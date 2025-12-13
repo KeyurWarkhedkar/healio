@@ -1,0 +1,9 @@
+package com.keyur.healio.Enums;
+
+public enum AppointmentEventType {
+    BOOKED,
+    CANCELLED_COUNSELLOR_REFUND_SUCCESS,
+    CANCELLED_COUNSELLOR_REFUND_FAILED,
+    CANCELLED_STUDENT,
+    CANCELLED_COUNSELLOR_NO_REFUND
+}

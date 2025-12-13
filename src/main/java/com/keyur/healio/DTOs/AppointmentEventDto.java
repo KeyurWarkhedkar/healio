@@ -1,5 +1,6 @@
 package com.keyur.healio.DTOs;
 
+import com.keyur.healio.Enums.AppointmentEventType;
 import com.keyur.healio.Enums.AppointmentStatus;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -18,5 +19,5 @@ public class AppointmentEventDto {
     private String counsellorEmail;
     private String appointmentStatus;
     private LocalDateTime appointmentTime;
-    private AppointmentStatus eventType;
+    private AppointmentEventType eventType;
 }

@@ -4,16 +4,17 @@ import com.keyur.healio.CustomExceptions.DuplicateEmailException;
 import com.keyur.healio.CustomExceptions.InvalidOperationException;
 import com.keyur.healio.CustomExceptions.ResourceNotFoundException;
 import com.keyur.healio.CustomExceptions.SlotOverlapException;
-import com.keyur.healio.DTOs.AppointmentEventDto;
-import com.keyur.healio.DTOs.AppointmentUpdateDto;
-import com.keyur.healio.DTOs.CounsellorDto;
-import com.keyur.healio.DTOs.SlotDto;
+import com.keyur.healio.DTOs.*;
 import com.keyur.healio.Entities.Appointment;
+import com.keyur.healio.Entities.Payment;
 import com.keyur.healio.Entities.Slot;
 import com.keyur.healio.Entities.User;
+import com.keyur.healio.Enums.AppointmentEventType;
 import com.keyur.healio.Enums.AppointmentStatus;
+import com.keyur.healio.Enums.PaymentStatus;
 import com.keyur.healio.Enums.UserRoles;
 import com.keyur.healio.Repositories.AppointmentRepository;
+import com.keyur.healio.Repositories.PaymentRepository;
 import com.keyur.healio.Repositories.SlotRepository;
 import com.keyur.healio.Repositories.UserRepository;
 import com.keyur.healio.Security.CustomUserDetailsService;
@@ -36,70 +37,26 @@ import java.util.Optional;
 @Service
 public class CounsellorServiceImp implements CounsellorService {
     //fields
-    UserRepository userRepository;
-    BCryptPasswordEncoder bCryptPasswordEncoder;
-    AuthenticationManager authenticationManager;
-    JwtService jwtService;
-    CustomUserDetailsService customUserDetailsService;
+    private final UserRepository userRepository;
     private final SlotRepository slotRepository;
     private final AppointmentRepository appointmentRepository;
-    AppointmentEventPublisher publisher;
+    private final AppointmentEventPublisher publisher;
+    private final PaymentRepository paymentRepository;
+    private final PayUServiceImp payUService;
 
     //injecting using dependency injection
     public CounsellorServiceImp(UserRepository userRepository, BCryptPasswordEncoder bCryptPasswordEncoder, AuthenticationManager authenticationManager, JwtService jwtService, CustomUserDetailsService customUserDetailsService,
                                 SlotRepository slotRepository,
                                 AppointmentRepository appointmentRepository,
-                                AppointmentEventPublisher publisher) {
+                                AppointmentEventPublisher publisher,
+                                PaymentRepository paymentRepository,
+                                PayUServiceImp payUService) {
         this.userRepository = userRepository;
-        this.bCryptPasswordEncoder = bCryptPasswordEncoder;
-        this.authenticationManager = authenticationManager;
-        this.jwtService = jwtService;
-        this.customUserDetailsService = customUserDetailsService;
         this.slotRepository = slotRepository;
         this.appointmentRepository = appointmentRepository;
         this.publisher = publisher;
-    }
-
-    //method to add a new user to the database
-    @Transactional
-    public User registerCounsellor(User newCounsellor) {
-        //check if the user with the same email already exists in the database
-        Optional<User> optionalUser = userRepository.findByEmail(newCounsellor.getEmail());
-        if(optionalUser.isPresent()) {
-            throw new DuplicateEmailException("Try again with different email id. A user with this email id already exists!");
-        }
-
-        //encrypt the password and set the hashed password as user's password before saving in db
-        newCounsellor.setPassword(bCryptPasswordEncoder.encode(newCounsellor.getPassword()));
-
-        //set the role of the student before saving in db
-        newCounsellor.setRole(UserRoles.COUNSELLOR);
-
-        //making use of db unique constraint as the final safety net
-        try {
-            userRepository.save(newCounsellor);
-        } catch(DataIntegrityViolationException exception) {
-            throw new DuplicateEmailException("Try again with different email id. A user with this email id already exists!");
-        }
-
-        return newCounsellor;
-    }
-
-    //method to login student
-    public String loginCounsellor(CounsellorDto counsellorDto) {
-        try {
-            Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(
-                            counsellorDto.getEmail(),
-                            counsellorDto.getPassword()
-                    )
-            );
-
-            String username = authentication.getName();
-            return jwtService.generateToken(username);
-        } catch(AuthenticationException exception) {
-            throw new BadCredentialsException("Invalid Credentials");
-        }
+        this.paymentRepository = paymentRepository;
+        this.payUService = payUService;
     }
 
     //method for getting the user from Security Context
@@ -139,6 +96,7 @@ public class CounsellorServiceImp implements CounsellorService {
         newSlot.setCounsellor(counsellor);
         newSlot.setStartTime(slotDto.getStartTime());
         newSlot.setEndTime(slotDto.getEndTime());
+        newSlot.setPrice(100);
         newSlot.setStudent(null);
         newSlot.setBooked(false);
 
@@ -178,6 +136,10 @@ public class CounsellorServiceImp implements CounsellorService {
             throw new InvalidOperationException("Slot already cancelled");
         }
 
+        if (slotToBeCancelled.getCounsellor().getId() != (counsellor.getId())) {
+            throw new InvalidOperationException("This slot does not belong to you");
+        }
+
         //check if the slot to be cancelled is before the current time or not
         if(slotToBeCancelled.getStartTime().isBefore(LocalDateTime.now())) {
             throw new InvalidOperationException("You cannot cancel a slot from the past");
@@ -190,21 +152,39 @@ public class CounsellorServiceImp implements CounsellorService {
         //check if the slot to be cancelled has any appointment scheduled
         if(slotToBeCancelled.isBooked()) {
             Appointment appointmentToBeCancelled = appointmentRepository.findBySlot(slotToBeCancelled);
+
+            Payment paymentForAppointment = paymentRepository.findByAppointmentIdWithLock(appointmentToBeCancelled.getId())
+                            .orElseThrow(() -> new ResourceNotFoundException("No payment record found for the given appointment"));
+
+            if(paymentForAppointment.getPaymentStatus().equals(PaymentStatus.REFUNDED)) {
+                throw new InvalidOperationException("The refund for this payment is already processed!");
+            }
+
+            if(appointmentToBeCancelled.getAppointmentStatus().equals(AppointmentStatus.CONFIRMED)
+            && paymentForAppointment.getPaymentStatus().equals(PaymentStatus.SUCCESS)) {
+                PayURefundResponseDto payURefundResponseDto = payUService.refund(paymentForAppointment.getGatewayPaymentId(), paymentForAppointment.getAmount());
+
+                AppointmentEventDto event = new AppointmentEventDto();
+                event.setAppointmentId(appointmentToBeCancelled.getId());
+                event.setAppointmentTime(appointmentToBeCancelled.getAppointmentTime());
+                event.setCounsellorEmail(appointmentToBeCancelled.getCounsellor().getEmail());
+                event.setStudentEmail(appointmentToBeCancelled.getStudent().getEmail());
+
+                //check if the refund was successful or not
+                if(payURefundResponseDto.isSuccess()) {
+                    paymentForAppointment.setPaymentStatus(PaymentStatus.REFUNDED);
+                    event.setEventType(AppointmentEventType.CANCELLED_COUNSELLOR_REFUND_SUCCESS);
+                } else {
+                    paymentForAppointment.setPaymentStatus(PaymentStatus.REFUND_FAILED);
+                    event.setEventType(AppointmentEventType.CANCELLED_COUNSELLOR_REFUND_FAILED);
+                }
+                paymentRepository.save(paymentForAppointment);
+                publisher.publishCancelled(event);
+            }
+            //cancel the appointment for all the case
             appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED_COUNSELLOR);
             appointmentRepository.save(appointmentToBeCancelled);
-
-            //publish the appointment booked event to the notification queue for sending the
-            //email notification to the counsellor
-            AppointmentEventDto event = new AppointmentEventDto();
-            event.setAppointmentId(appointmentToBeCancelled.getId());
-            event.setAppointmentTime(appointmentToBeCancelled.getAppointmentTime());
-            event.setCounsellorEmail(appointmentToBeCancelled.getCounsellor().getEmail());
-            event.setStudentEmail(appointmentToBeCancelled.getStudent().getEmail());
-            event.setEventType(AppointmentStatus.CANCELLED_COUNSELLOR);
-
-            publisher.publishCancelled(event);
         }
-
         return slotToBeCancelled;
     }
 
@@ -242,6 +222,37 @@ public class CounsellorServiceImp implements CounsellorService {
             return appointmentToBeCancelled; // idempotent: just return
         }
 
+        //fetch the payment for which refund has to be processed
+        Optional<Payment> optionalPayment = paymentRepository.findByAppointmentIdWithLock(appointmentToBeCancelled.getId());
+
+        //publish the appointment booked event to the notification queue for sending the
+        //email notification to the student about the cancellation
+        AppointmentEventDto event = new AppointmentEventDto();
+        event.setAppointmentId(appointmentToBeCancelled.getId());
+        event.setAppointmentTime(appointmentToBeCancelled.getAppointmentTime());
+        event.setCounsellorEmail(appointmentToBeCancelled.getCounsellor().getEmail());
+        event.setStudentEmail(appointmentToBeCancelled.getStudent().getEmail());
+
+        //2 cases : if the appointment was cancelled before the payment was made or after the payment was made
+        if(optionalPayment.isPresent()) {
+            Payment paymentForRefund = optionalPayment.get();
+            if(paymentForRefund.getPaymentStatus().equals(PaymentStatus.SUCCESS)
+            && appointmentToBeCancelled.getAppointmentStatus().equals(AppointmentStatus.CONFIRMED)) {
+                PayURefundResponseDto payURefundResponseDto = payUService.refund(paymentForRefund.getGatewayPaymentId(), paymentForRefund.getAmount());
+                if(payURefundResponseDto.isSuccess()) {
+                    paymentForRefund.setPaymentStatus(PaymentStatus.REFUNDED);
+                    event.setEventType(AppointmentEventType.CANCELLED_COUNSELLOR_REFUND_SUCCESS);
+                } else {
+                    paymentForRefund.setPaymentStatus(PaymentStatus.REFUND_FAILED);
+                    event.setEventType(AppointmentEventType.CANCELLED_COUNSELLOR_REFUND_FAILED);
+                }
+            } else {
+                event.setEventType(AppointmentEventType.CANCELLED_COUNSELLOR_NO_REFUND);
+            }
+        } else {
+            event.setEventType(AppointmentEventType.CANCELLED_COUNSELLOR_NO_REFUND);
+        }
+
         //free slot
         slot.setStudent(null);
         slot.setBooked(false);
@@ -250,15 +261,6 @@ public class CounsellorServiceImp implements CounsellorService {
         //cancel appointment
         appointmentToBeCancelled.setAppointmentStatus(AppointmentStatus.CANCELLED_COUNSELLOR);
         appointmentRepository.save(appointmentToBeCancelled);
-
-        //publish the appointment booked event to the notification queue for sending the
-        //email notification to the counsellor
-        AppointmentEventDto event = new AppointmentEventDto();
-        event.setAppointmentId(appointmentToBeCancelled.getId());
-        event.setAppointmentTime(appointmentToBeCancelled.getAppointmentTime());
-        event.setCounsellorEmail(appointmentToBeCancelled.getCounsellor().getEmail());
-        event.setStudentEmail(appointmentToBeCancelled.getStudent().getEmail());
-        event.setEventType(AppointmentStatus.CANCELLED_COUNSELLOR);
 
         publisher.publishCancelled(event);
 

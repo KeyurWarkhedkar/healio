@@ -1,10 +1,20 @@
 package com.keyur.healio.Services;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.keyur.healio.DTOs.PayURefundResponseDto;
 import com.keyur.healio.DTOs.PaymentOrderResponseDto;
 import com.keyur.healio.Entities.Payment;
 import com.keyur.healio.Entities.User;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -35,8 +45,8 @@ public class PayUServiceImp implements PayUService {
         dto.setPhone("");
         dto.setHash(hash);
         dto.setPayuUrl(payuBaseUrl);
-        dto.setSurl("https://yourapp.com/payment/verify/success");
-        dto.setFurl("https://yourapp.com/payment/verify/failure");
+        dto.setSurl("https://dorie-lunulate-breezily.ngrok-free.dev/payment/verify/success");
+        dto.setFurl("https://dorie-lunulate-breezily.ngrok-free.dev/payment/verify/failure");
         return dto;
     }
 
@@ -84,6 +94,71 @@ public class PayUServiceImp implements PayUService {
                 productInfo + "|" + amount + "|" + txnid + "|" + key;
 
         return sha512(hashString);
+    }
+
+    //method for processing refunds
+    public PayURefundResponseDto refund(String mihpayid, double amount) {
+
+        String command = "refund_payment";
+        String hashStr = merchantKey + "|" + command + "|" + mihpayid + "|" + merchantSalt;
+        String hash = sha512(hashStr);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("key", merchantKey);
+        body.add("command", command);
+        body.add("var1", mihpayid);
+        body.add("var2", String.valueOf(amount));
+        body.add("hash", hash);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+
+        RestTemplate restTemplate = new RestTemplate();
+        ResponseEntity<String> response =
+                restTemplate.postForEntity("https://test.payu.in/merchant/postservice?form=2", request, String.class);
+
+        return parseResponse(response.getBody());
+    }
+
+    //method for parsing PayU refund response and returning it the frontend
+    private PayURefundResponseDto parseResponse(String responseBody) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(responseBody);
+
+            PayURefundResponseDto res = new PayURefundResponseDto();
+            res.setMessage(root.path("msg").asText());
+
+            JsonNode transactionDetails = root.path("transaction_details");
+
+            if (transactionDetails.isMissingNode() || !transactionDetails.fieldNames().hasNext()) {
+                res.setSuccess(false);
+                res.setStatus("failed");
+                return res;
+            }
+
+            // The key inside "transaction_details" is the mihpayid value
+            String mihpayid = transactionDetails.fieldNames().next();
+            JsonNode tx = transactionDetails.get(mihpayid);
+
+            res.setMihpayid(mihpayid);
+            res.setRefundId(tx.path("refund_id").asText(null));
+            res.setRequestId(tx.path("request_id").asText(null));
+            res.setStatus(tx.path("status").asText("failed"));
+
+            res.setSuccess("success".equalsIgnoreCase(res.getStatus()));
+
+            return res;
+
+        } catch (Exception e) {
+            PayURefundResponseDto error = new PayURefundResponseDto();
+            error.setSuccess(false);
+            error.setStatus("error");
+            error.setMessage("Failed to parse refund response: " + e.getMessage());
+            return error;
+        }
     }
 
 }

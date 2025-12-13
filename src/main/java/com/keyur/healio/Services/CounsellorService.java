@@ -10,8 +10,6 @@ import com.keyur.healio.Entities.User;
 import java.util.List;
 
 public interface CounsellorService {
-    public User registerCounsellor(User newCounsellor);
-    public String loginCounsellor(CounsellorDto counsellorDto);
     public Slot publishSlots(SlotDto slotDto);
     public List<Appointment> getAllAppointments();
     public Slot removeSlot(int slotId);

@@ -20,9 +20,11 @@ public class NotificationConsumer {
     @RabbitListener(queues = RabbitConfig.NOTIFY_QUEUE)
     public void receiveNotification(AppointmentEventDto event) {
         switch (event.getEventType()) {
-            case CONFIRMED -> handleBooking(event);
+            case BOOKED -> handleBooking(event);
             case CANCELLED_STUDENT -> handleStudentCancellation(event);
-            case CANCELLED_COUNSELLOR -> handleCounsellorCancellation(event);
+            case CANCELLED_COUNSELLOR_REFUND_SUCCESS -> handleCounsellorCancellationWithRefundSuccess(event);
+            case CANCELLED_COUNSELLOR_REFUND_FAILED -> handleCounsellorCancellationWithRefundFailed(event);
+            case CANCELLED_COUNSELLOR_NO_REFUND -> handleCounsellorCancellationWithNoRefund(event);
             default -> throw new IllegalArgumentException("Unknown event type: " + event.getEventType());
         }
     }
@@ -43,8 +45,24 @@ public class NotificationConsumer {
         dummyEmailService.sendEmail(event.getCounsellorEmail(), subject, body);
     }
 
-    private void handleCounsellorCancellation(AppointmentEventDto event) {
-        // Send email to student notifying that counsellor cancelled
+    private void handleCounsellorCancellationWithRefundSuccess(AppointmentEventDto event) {
+        // Send email to student notifying that counsellor cancelled and your refund is successful
+        String subject = "Appointment Cancelled by Counsellor";
+        String body = String.format("Counsellor cancelled your appointment at %s and your refund is successfully processed!",
+                event.getAppointmentTime());
+        dummyEmailService.sendEmail(event.getStudentEmail(), subject, body);
+    }
+
+    private void handleCounsellorCancellationWithRefundFailed(AppointmentEventDto event) {
+        //send email to the student notifying that the counsellor cancelled and your refund is pending
+        String subject = "Appointment Cancelled by Counsellor";
+        String body = String.format("Counsellor cancelled your appointment at %s and your refund is pending. Our team will contact you shortly.",
+                event.getAppointmentTime());
+        dummyEmailService.sendEmail(event.getStudentEmail(), subject, body);
+    }
+
+    private void handleCounsellorCancellationWithNoRefund(AppointmentEventDto event) {
+        //handle cancellation by counsellor when the payment was not made
         String subject = "Appointment Cancelled by Counsellor";
         String body = String.format("Counsellor cancelled your appointment at %s",
                 event.getAppointmentTime());
