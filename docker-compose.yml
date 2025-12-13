@@ -1,0 +1,43 @@
+services:
+
+  app:
+    image: healio-app:latest
+    container_name: healio-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql
+      - rabbitmq
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/healio
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: sqlAccess
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+
+  mysql:
+    image: mysql:8.0
+    container_name: healio-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: sqlAccess
+      MYSQL_DATABASE: healio
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: healio-rabbitmq
+    ports:
+      - "5672:5672"      # RabbitMQ protocol
+      - "15672:15672"    # RabbitMQ Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+volumes:
+  mysql_data:
