@@ -43,4 +43,10 @@ public class CounsellorController {
     public ResponseEntity<List<Appointment>> publishSlot() {
         return new ResponseEntity<>(counsellorService.getAllAppointments(), HttpStatus.OK);
     }
+
+    //method to cancel appointment from counsellor's side
+    @PostMapping(value = "/cancelAppointment/{id}")
+    public ResponseEntity<Appointment> cancelAppointment(@PathVariable int id) {
+        return new ResponseEntity<>(counsellorService.cancelAppointment(id), HttpStatus.OK);
+    }
 }

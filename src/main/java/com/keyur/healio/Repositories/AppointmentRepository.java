@@ -23,5 +23,10 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Intege
     public List<Appointment> findAllByCounsellorOrderByAppointmentTimeAsc(User counsellor);
     public List<Appointment> findAllByStudentOrderByAppointmentTimeAsc(User student);
     public Appointment findBySlot(Slot slot);
-    public List<Appointment> findAllByAppointmentStatusAndCreatedAtBefore(AppointmentStatus status, LocalDateTime time);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM Appointment a WHERE a.appointmentStatus = :status AND a.createdAt < :threshold")
+    List<Appointment> findAllByAppointmentStatusAndCreatedAtBefore(
+            @Param("status") AppointmentStatus status,
+            @Param("threshold") LocalDateTime threshold
+    );
 }

@@ -58,13 +58,15 @@ public class PayUServiceImp implements PayUService {
         String productInfo = "Counselling Appointment";
         String firstName = user.getName();
         String email = user.getEmail();
+        String amountStr = String.valueOf(amount); // Or String.format("%.2f", (double) amount)
 
-        String hashString = merchantKey + "|" + txnId + "|" + amount + "|" +
-                productInfo + "|" + firstName + "|" + email + "|||||||||||" +
-                merchantSalt;
+        String hashString = merchantKey + "|" + txnId + "|" + amountStr + "|" +
+                productInfo + "|" + firstName + "|" + email +
+                "|||||||||||" + merchantSalt; // 11 pipes as required
 
         return sha512(hashString);
     }
+
 
     public String sha512(String input) {
         try {

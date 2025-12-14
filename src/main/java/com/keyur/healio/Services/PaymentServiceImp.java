@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
@@ -113,55 +114,75 @@ public class PaymentServiceImp implements PaymentService {
     //appropriate redirect url to the frontend page has to be added
     @Override
     @Transactional
-    public String verifyPayment(Map<String, String> params, boolean success) {
+    public String verifyPayment(Map<String, String> params) {
+
         String txnId = params.get("txnid");
         String mihpayid = params.get("mihpayid");
         String status = params.get("status");
         String receivedHash = params.get("hash");
 
-        // Fetch payment from DB
-        Payment payment = paymentRepository.findByGatewayOrderId(txnId)
+
+        Payment payment = paymentRepository
+                .findByGatewayOrderIdWithLock(txnId)
                 .orElseThrow(() -> new RuntimeException("Payment not found"));
 
-        //handle idempotency (no need for lock here as PayU calls the api again after a lot of time.
-        //so it would not cause any race condition. further two concurrent transaction at this stage
-        //will only update the status to SUCCESS two times, so lost update is not a problem as well)
-        if(payment.getPaymentStatus().equals(PaymentStatus.SUCCESS)) {
-            return "Success";
-        }
-
-        // Recalculate hash on backend
+        //hash verification (always first)
         String recalculatedHash = payUServiceImp.generatePayuResponseHash(params);
-
-        if (!recalculatedHash.equals(receivedHash)) {
+        System.out.println(recalculatedHash);
+        if(!recalculatedHash.equals(receivedHash)) {
             return "Hash mismatch! Payment verification failed.";
         }
 
-        // Update payment status
+        //idempotency check
+        if(payment.getPaymentStatus() == PaymentStatus.SUCCESS) {
+            return "Success";
+        }
+
+        if(payment.getPaymentStatus() != PaymentStatus.PENDING) {
+            throw new InvalidOperationException("Cannot process tampered payment!");
+        }
+
+        if(!payment.getGatewayOrderId().equals(txnId)) {
+            throw new InvalidOperationException("Cannot process tampered payment!");
+        }
+
+        Appointment appointment = payment.getAppointment();
+
+        //check if the verification is happening after the 10 cancellation window
+        if(appointment.getAppointmentStatus().equals(AppointmentStatus.CANCELLED_EXTERNAL)) {
+            throw new InvalidOperationException("Time for payment expired!");
+        }
+
+        BigDecimal receivedAmount = new BigDecimal(params.get("amount"));
+        BigDecimal dbAmount = BigDecimal.valueOf(payment.getAmount());
+
+        if (dbAmount.compareTo(receivedAmount) != 0) {
+            throw new InvalidOperationException("Amount mismatch");
+        }
+
+        //update payment
         payment.setGatewayPaymentId(mihpayid);
-        payment.setPaymentStatus(status.equalsIgnoreCase("success") ? PaymentStatus.SUCCESS : PaymentStatus.FAILED);
+        boolean isSuccess = "success".equalsIgnoreCase(status);
+        payment.setPaymentStatus(isSuccess ? PaymentStatus.SUCCESS : PaymentStatus.FAILED);
         paymentRepository.save(payment);
 
-        if(success) {
-            Appointment newAppointment = payment.getAppointment();
+        //post-payment business logic
+        if (isSuccess) {
+            appointment.setAppointmentStatus(AppointmentStatus.CONFIRMED);
+            appointmentRepository.save(appointment);
 
-            //set appointment status as confirmed
-            newAppointment.setAppointmentStatus(AppointmentStatus.CONFIRMED);
-            appointmentRepository.save(newAppointment);
-
-            //create the appointment event and send notification
             AppointmentEventDto event = new AppointmentEventDto();
-            event.setAppointmentId(newAppointment.getId());
-            event.setAppointmentTime(newAppointment.getAppointmentTime());
-            event.setCounsellorEmail(newAppointment.getCounsellor().getEmail());
-            event.setStudentEmail(newAppointment.getStudent().getEmail());
+            event.setAppointmentId(appointment.getId());
+            event.setAppointmentTime(appointment.getAppointmentTime());
+            event.setCounsellorEmail(appointment.getCounsellor().getEmail());
+            event.setStudentEmail(appointment.getStudent().getEmail());
             event.setEventType(AppointmentEventType.BOOKED);
 
             publisher.publishBooked(event);
-
             return "Success";
-        } else {
-            return "Failure";
         }
+
+        return "Failure";
     }
+
 }

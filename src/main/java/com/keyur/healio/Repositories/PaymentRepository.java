@@ -20,4 +20,10 @@ public interface PaymentRepository extends JpaRepository<Payment, Integer> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Payment p WHERE p.appointment.id = :appointmentId")
     Optional<Payment> findByAppointmentIdWithLock(@Param("appointmentId") int appointmentId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Payment p WHERE p.gatewayOrderId = :orderId")
+    Optional<Payment> findByGatewayOrderIdWithLock(@Param("orderId") String orderId);
+
+    public Optional<Payment> findByAppointmentId(int appointmentId);
 }

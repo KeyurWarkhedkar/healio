@@ -22,13 +22,13 @@ public class PaymentController {
         return new ResponseEntity<>(paymentService.createOrder(appointmentId), HttpStatus.CREATED);
     }
 
-    @GetMapping(value = "/verify/success")
+    @PostMapping(value = "/verify/success")
     public ResponseEntity<String> verifyPaymentSuccess(@RequestParam Map<String, String> params) {
-        return new ResponseEntity<>(paymentService.verifyPayment(params, true), HttpStatus.OK);
+        return new ResponseEntity<>(paymentService.verifyPayment(params), HttpStatus.OK);
     }
 
-    @GetMapping(value = "/verify/failure")
+    @PostMapping(value = "/verify/failure")
     public ResponseEntity<String> verifyPaymentFailure(@RequestParam Map<String, String> params) {
-        return new ResponseEntity<>(paymentService.verifyPayment(params, false), HttpStatus.CONFLICT);
+        return new ResponseEntity<>(paymentService.verifyPayment(params), HttpStatus.CONFLICT);
     }
 }
