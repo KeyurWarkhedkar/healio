@@ -113,8 +113,7 @@ public class StudentServiceImp implements StudentService {
 
         //acquire slot lock first to ensure that concurrent cancellation attempts
         //are serialized. Validation after locking ensures only the first transaction passes.
-        Slot slot = slotRepository.findByCounsellorAndStudentAndStartTimeWithLock(appointmentToBeCancelled.getCounsellor(),
-                appointmentToBeCancelled.getStudent(), appointmentToBeCancelled.getAppointmentTime())
+        Slot slot = slotRepository.findById(appointmentToBeCancelled.getSlot().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("No slot found for the current appointment"));
 
         //check if the appointment belongs to the student trying to cancel it
