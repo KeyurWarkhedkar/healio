@@ -45,7 +45,7 @@ public class CounsellorServiceImp implements CounsellorService {
     private final PayUServiceImp payUService;
 
     //injecting using dependency injection
-    public CounsellorServiceImp(UserRepository userRepository, BCryptPasswordEncoder bCryptPasswordEncoder, AuthenticationManager authenticationManager, JwtService jwtService, CustomUserDetailsService customUserDetailsService,
+    public CounsellorServiceImp(UserRepository userRepository,
                                 SlotRepository slotRepository,
                                 AppointmentRepository appointmentRepository,
                                 AppointmentEventPublisher publisher,
@@ -63,7 +63,8 @@ public class CounsellorServiceImp implements CounsellorService {
     public User getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String email = authentication.getName();
-        return userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("No counsellor found with the given email!"));
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("No counsellor found with the given email!"));
     }
 
     //method for counsellors to publish their slots
